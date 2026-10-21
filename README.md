@@ -1,11 +1,11 @@
 # Totono Analytics for iOS
 
-In Xcode, add `https://github.com/totono-work/analytics-ios` as a Swift Package dependency, select version `0.1.0` or later, and link the `TotonoAnalytics` product. Supports iOS 15 and later.
+In Xcode, add `https://github.com/totono-work/analytics-ios` as a Swift Package dependency, select version `0.2.0` or later, and link the `TotonoAnalytics` product. Supports iOS 15 and later.
 
 For Package.swift:
 
 ```swift
-.package(url: "https://github.com/totono-work/analytics-ios.git", from: "0.1.0")
+.package(url: "https://github.com/totono-work/analytics-ios.git", from: "0.2.0")
 ```
 
 ```swift
@@ -33,7 +33,7 @@ The GitHub CI workflow compiles and tests the package on macOS. Live endpoint te
 
 ## Device and environment context (0.2.0)
 
-The 0.2.0 source requires the compatible collector to be deployed first: the 0.1.0 server rejects unknown metadata fields. The installation examples above refer to the existing published release until the new release is tagged.
+The 0.2.0 source requires the compatible collector to be deployed first: the 0.1.0 server rejects unknown metadata fields.
 
 Each explicit `track()` snapshots native device class, available hardware identifier (for example `iPhone17,3`, or the simulator's model identifier), OS name/version, bundled SDK version, preferred BCP 47 language, and available system light/dark appearance. Full screen width/height use **points**, and `screenScale` reports physical pixels per point. UIKit sampling runs on the main actor; unavailable values are omitted. The package retains its non-UIKit compilation path, where screen/appearance/model data may be unavailable.
 
