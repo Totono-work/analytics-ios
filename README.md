@@ -30,3 +30,25 @@ Tracking starts the ten-second flush timer. Flush on launch to retry restored qu
 Run `swift test` to compile and test the client.
 
 The GitHub CI workflow compiles and tests the package on macOS. Live endpoint testing is optional; set `TOTONO_ANALYTICS_TEST_ENDPOINT` and `TOTONO_ANALYTICS_TEST_KEY` to use a disposable local project. Do not put keys in the repository.
+
+## Device and environment context (0.2.0)
+
+The 0.2.0 source requires the compatible collector to be deployed first: the 0.1.0 server rejects unknown metadata fields. The installation examples above refer to the existing published release until the new release is tagged.
+
+Each explicit `track()` snapshots native device class, available hardware identifier (for example `iPhone17,3`, or the simulator's model identifier), OS name/version, bundled SDK version, preferred BCP 47 language, and available system light/dark appearance. Full screen width/height use **points**, and `screenScale` reports physical pixels per point. UIKit sampling runs on the main actor; unavailable values are omitted. The package retains its non-UIKit compilation path, where screen/appearance/model data may be unavailable.
+
+Omitting `appVersion` now uses the app bundle's `CFBundleShortVersionString`. Supplying a string (including an explicit empty string) takes precedence. Active app language/theme can override device defaults:
+
+```swift
+let analytics = TotonoAnalytics(
+    endpoint: URL(string: "https://totono.work/api/public/analytics/v1/events")!,
+    key: "YOUR_INGESTION_KEY",
+    context: AnalyticsContext(language: "cs-CZ", colorScheme: .dark)
+)
+await analytics.setContext(AnalyticsContext(language: "en-US", colorScheme: .light))
+await analytics.setContext(AnalyticsContext()) // Restore device defaults.
+```
+
+`setContext` replaces all overrides for future events. Invalid language overrides fall back to the device preference. Queue restoration accepts legacy events with absent metadata; retries preserve captured values. No automatic events, location permission prompts, or extra device identifiers are introduced. Country is supplied only by the collector's trusted upload-time IP country estimate when enabled, can reflect a VPN/proxy, and remains unknown otherwise. Locale region is never used as country.
+
+The release version lives in `Sources/TotonoAnalytics/Resources/VERSION` and is bundled by SwiftPM; update it to match the release tag. Run both macOS `swift test` and an iOS Simulator build to verify the Foundation-only and UIKit paths.

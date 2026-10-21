@@ -23,6 +23,7 @@ final class TotonoAnalyticsTests: XCTestCase {
         XCTAssertEqual(events[1]["customerId"] as? String, "customer")
         XCTAssertEqual(events[1]["platform"] as? String, "ios")
         XCTAssertEqual(events[1]["environment"] as? String, "test")
+        XCTAssertEqual(events[0]["appVersion"] as? String, Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
         XCTAssertNotNil(UUID(uuidString: events[0]["id"] as! String))
         await client.setOptOut(true)
     }
@@ -89,6 +90,7 @@ extension TotonoAnalyticsTests {
         let client = TotonoAnalytics(endpoint: URL(string: "https://example.com/events")!, key: "retry", defaults: UserDefaults(suiteName: "analytics.retry.\(UUID())")!, transport: { await recorder.send($0) })
         await client.track("retry")
         await client.flush()
+        await client.setContext(AnalyticsContext(language: "cs-CZ", colorScheme: .dark))
         await client.flush()
         let first = await recorder.requests()
         XCTAssertEqual(first.count, 1)
@@ -100,6 +102,59 @@ extension TotonoAnalyticsTests {
         let after = try JSONDecoder().decode([String:[TotonoAnalytics.Event]].self, from: requests[1])["events"]![0]
         XCTAssertEqual(before.id, after.id)
         XCTAssertEqual(before.timestamp, after.timestamp)
+        XCTAssertEqual(before.sdkVersion, after.sdkVersion)
+        XCTAssertEqual(before.osVersion, after.osVersion)
+        XCTAssertEqual(before.language, after.language)
+        XCTAssertEqual(before.screenWidth, after.screenWidth)
+        let beforeJSON = try JSONSerialization.jsonObject(with: requests[0]) as! NSDictionary
+        let afterJSON = try JSONSerialization.jsonObject(with: requests[1]) as! NSDictionary
+        XCTAssertEqual(beforeJSON, afterJSON)
         await client.setOptOut(true)
+    }
+}
+
+extension TotonoAnalyticsTests {
+    func testContextSnapshotsAndLegacyQueueUpgrade() async throws {
+        let recorder = Recorder()
+        let defaults = UserDefaults(suiteName: "analytics.upgrade.\(UUID())")!
+        let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let legacy: [String: Any] = ["id": UUID().uuidString, "timestamp": f.string(from: Date()), "name": "legacy",
+            "installationId": "i", "sessionId": "s", "environment": "production", "platform": "ios", "appVersion": "1", "properties": [:]]
+        defaults.set(try JSONSerialization.data(withJSONObject: [legacy]), forKey: "totono.analytics.upgrade.queue")
+        let client = TotonoAnalytics(endpoint: URL(string: "https://example.com/events")!, key: "upgrade", appVersion: "2.1",
+                                     context: AnalyticsContext(language: "cs-CZ", colorScheme: .dark),
+                                     defaults: defaults, transport: { await recorder.send($0) })
+        await client.track("first")
+        await client.setContext(AnalyticsContext(language: "en-US", colorScheme: .light))
+        await client.track("second")
+        await client.setContext(AnalyticsContext())
+        await client.track("default")
+        await client.flush()
+        let events = try await recorder.events()
+        XCTAssertEqual(events.count, 4)
+        XCTAssertEqual(events[0] as NSDictionary, legacy as NSDictionary)
+        XCTAssertNil(events[0]["sdkVersion"])
+        XCTAssertEqual(events[1]["language"] as? String, "cs-CZ")
+        XCTAssertEqual(events[1]["colorScheme"] as? String, "dark")
+        XCTAssertEqual(events[2]["language"] as? String, "en-US")
+        XCTAssertEqual(events[2]["colorScheme"] as? String, "light")
+        XCTAssertEqual(events[1]["appVersion"] as? String, "2.1")
+        XCTAssertEqual(events[1]["sdkVersion"] as? String, "0.2.0")
+        XCTAssertNotNil(events[1]["osVersion"])
+        XCTAssertEqual(events[3]["language"] as? String, DeviceContext.validLanguage(Locale.preferredLanguages.first))
+        #if canImport(UIKit)
+        XCTAssertGreaterThan(events[1]["screenWidth"] as? Double ?? 0, 0)
+        XCTAssertGreaterThan(events[1]["screenHeight"] as? Double ?? 0, 0)
+        XCTAssertGreaterThan(events[1]["screenScale"] as? Double ?? 0, 0)
+        #endif
+        await client.setOptOut(true)
+    }
+    func testLanguageValidation() {
+        for value in ["cs-CZ", "en", "zh-Hant-TW", "en-US-u-ca-gregory", "de-CH-1901", "en-x-app"] {
+            XCTAssertEqual(DeviceContext.validLanguage(value), value)
+        }
+        for value in ["", "en_US", "en-u-ca-gregory-u-nu-latn", "sl-rozaj-rozaj", String(repeating: "a", count: 81)] {
+            XCTAssertNil(DeviceContext.validLanguage(value))
+        }
     }
 }

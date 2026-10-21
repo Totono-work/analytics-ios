@@ -28,18 +28,23 @@ public actor TotonoAnalytics {
         let customerId: String?
         let environment: Environment
         let platform: String, appVersion: String
+        var deviceType: String?, deviceModel: String?, osName: String?, osVersion: String?, sdkVersion: String?
+        var screenWidth: Double?, screenHeight: Double?, screenScale: Double?
+        var colorScheme: AnalyticsContext.ColorScheme?
+        var language: String?
         let properties: [String: AnalyticsValue]
     }
     private let endpoint: URL, key: String, appVersion: String, environment: Environment, defaults: UserDefaults, prefix: String
     private let transport: @Sendable (URLRequest) async throws -> (Data, URLResponse)
     private var installationId = "", sessionId = "", customerId: String?, optedOut: Bool
+    private var context: AnalyticsContext
     private var queue: [Event] = [], sending = false, failures = 0, retryAt = Date.distantPast
     private var timer: Task<Void, Never>?
-    public init(endpoint: URL, key: String, appVersion: String = "", environment: Environment = .production,
-                namespace: String? = nil, defaults: UserDefaults = .standard,
+    public init(endpoint: URL, key: String, appVersion: String? = nil, environment: Environment = .production,
+                namespace: String? = nil, context: AnalyticsContext = AnalyticsContext(), defaults: UserDefaults = .standard,
                 transport: @escaping @Sendable (URLRequest) async throws -> (Data, URLResponse) = { try await URLSession.shared.data(for: $0) }) {
         precondition(endpoint.scheme == "https" || (endpoint.scheme == "http" && ["localhost", "127.0.0.1", "[::1]"].contains(endpoint.host ?? "")), "invalid_endpoint")
-        self.endpoint = endpoint; self.key = key; self.appVersion = appVersion; self.environment = environment
+        self.endpoint = endpoint; self.key = key; self.appVersion = appVersion ?? (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""); self.context = context; self.environment = environment
         self.defaults = defaults; self.prefix = "totono.analytics.\(namespace ?? key)"; self.transport = transport
         self.optedOut = defaults.bool(forKey: prefix + ".optout")
         if !optedOut {
@@ -62,7 +67,10 @@ public actor TotonoAnalytics {
             }
         }
     }
-    public func track(_ name: String, properties: [String: AnalyticsValue] = [:]) {
+    public func track(_ name: String, properties: [String: AnalyticsValue] = [:]) async {
+        guard !optedOut else { return }
+        let device = await DeviceContext.sample()
+        // Sampling can suspend for the main actor. Re-check opt-out before queueing.
         guard !optedOut else { return }
         let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, name.utf16.count <= 120, appVersion.utf16.count <= 80, properties.count <= 32,
@@ -70,11 +78,19 @@ public actor TotonoAnalytics {
         let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         queue.append(Event(id: UUID().uuidString, timestamp: f.string(from: Date()), name: name,
                            installationId: installationId, sessionId: sessionId, customerId: customerId,
-                           environment: environment, platform: "ios", appVersion: appVersion, properties: properties))
+                           environment: environment, platform: "ios", appVersion: appVersion,
+                           deviceType: device.deviceType, deviceModel: device.deviceModel,
+                           osName: device.osName, osVersion: device.osVersion, sdkVersion: DeviceContext.sdkVersion,
+                           screenWidth: device.screenWidth, screenHeight: device.screenHeight, screenScale: device.screenScale,
+                           colorScheme: context.colorScheme ?? device.colorScheme,
+                           language: DeviceContext.validLanguage(context.language) ?? device.language, properties: properties))
         if queue.count > 1000 { queue.removeFirst() }
         persist(); startTimer()
         if queue.count >= 100 { Task { await self.flush() } }
     }
+    /// Replace overrides for future events. Empty context restores device defaults.
+    /// Invalid language overrides are ignored, preserving the device default.
+    public func setContext(_ context: AnalyticsContext) { self.context = context }
     public func identify(_ customerId: String) { guard !optedOut, !customerId.isEmpty, customerId.utf16.count <= 200 else { return }; self.customerId = customerId }
     public func reset() {
         customerId = nil; guard !optedOut else { return }
