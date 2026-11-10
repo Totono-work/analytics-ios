@@ -34,17 +34,17 @@ public actor TotonoAnalytics {
         var language: String?
         let properties: [String: AnalyticsValue]
     }
-    private let endpoint: URL, key: String, appVersion: String, environment: Environment, defaults: UserDefaults, prefix: String
+    private static let ingestionEndpoint = URL(string: "https://totono.work/api/public/analytics/v1/events")!
+    private let key: String, appVersion: String, environment: Environment, defaults: UserDefaults, prefix: String
     private let transport: @Sendable (URLRequest) async throws -> (Data, URLResponse)
     private var installationId = "", sessionId = "", customerId: String?, optedOut: Bool
     private var context: AnalyticsContext
     private var queue: [Event] = [], sending = false, failures = 0, retryAt = Date.distantPast
     private var timer: Task<Void, Never>?
-    public init(endpoint: URL, key: String, appVersion: String? = nil, environment: Environment = .production,
+    public init(key: String, appVersion: String? = nil, environment: Environment = .production,
                 namespace: String? = nil, context: AnalyticsContext = AnalyticsContext(), defaults: UserDefaults = .standard,
                 transport: @escaping @Sendable (URLRequest) async throws -> (Data, URLResponse) = { try await URLSession.shared.data(for: $0) }) {
-        precondition(endpoint.scheme == "https" || (endpoint.scheme == "http" && ["localhost", "127.0.0.1", "[::1]"].contains(endpoint.host ?? "")), "invalid_endpoint")
-        self.endpoint = endpoint; self.key = key; self.appVersion = appVersion ?? (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""); self.context = context; self.environment = environment
+        self.key = key; self.appVersion = appVersion ?? (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""); self.context = context; self.environment = environment
         self.defaults = defaults; self.prefix = "totono.analytics.\(namespace ?? key)"; self.transport = transport
         self.optedOut = defaults.bool(forKey: prefix + ".optout")
         if !optedOut {
@@ -115,7 +115,7 @@ public actor TotonoAnalytics {
         }
         guard !batch.isEmpty, let body = try? JSONEncoder().encode(["events": batch]) else { return }
         sending = true; defer { sending = false }
-        var request = URLRequest(url: endpoint); request.httpMethod = "POST"; request.httpBody = body; request.timeoutInterval = 15; request.httpShouldHandleCookies = false
+        var request = URLRequest(url: Self.ingestionEndpoint); request.httpMethod = "POST"; request.httpBody = body; request.timeoutInterval = 15; request.httpShouldHandleCookies = false
         request.setValue("application/json", forHTTPHeaderField: "Content-Type"); request.setValue(key, forHTTPHeaderField: "X-Totono-Analytics-Key")
         do {
             let (_, response) = try await transport(request)

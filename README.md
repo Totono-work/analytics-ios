@@ -11,7 +11,6 @@ For Package.swift:
 ```swift
 import TotonoAnalytics
 let analytics = TotonoAnalytics(
-    endpoint: URL(string: "https://totono.work/api/public/analytics/v1/events")!,
     key: "YOUR_INGESTION_KEY", appVersion: "1.0", environment: .test,
     namespace: "YOUR_PROJECT_ID"
 )
@@ -21,7 +20,7 @@ await analytics.track("checkout.started", properties: ["amount": .number(12)])
 await analytics.flush()
 ```
 
-Retain one actor instance per project. It persists a random installation ID and a bounded queue in UserDefaults. Use a stable project-specific namespace through key rotations. Sessions last for the actor's lifetime. Customer identity affects future events only and remains in memory. Event properties support `.string`, `.number`, `.bool`, and `.null`.
+The SDK sends events to Totono automatically. The public, write-only project key can be embedded in your app. Retain one actor instance per project. It persists a random installation ID and a bounded queue in UserDefaults. Use a stable project-specific namespace through key rotations. Sessions last for the actor's lifetime. Customer identity affects future events only and remains in memory. Event properties support `.string`, `.number`, `.bool`, and `.null`.
 
 Tracking starts the ten-second flush timer. Flush on launch to retry restored queued events, and when the app enters the background using the host application's permitted background execution time. Background delivery is best effort; events remain queued if a request cannot finish.
 
@@ -29,7 +28,7 @@ Tracking starts the ten-second flush timer. Flush on launch to retry restored qu
 
 Run `swift test` to compile and test the client.
 
-The GitHub CI workflow compiles and tests the package on macOS. Live endpoint testing is optional; set `TOTONO_ANALYTICS_TEST_ENDPOINT` and `TOTONO_ANALYTICS_TEST_KEY` to use a disposable local project. Do not put keys in the repository.
+The GitHub CI workflow compiles and tests the package on macOS. Live endpoint testing is optional; set `TOTONO_ANALYTICS_TEST_KEY` to the key of a disposable project on Totono.
 
 ## Device and environment context (0.2.0)
 
@@ -41,7 +40,6 @@ Omitting `appVersion` now uses the app bundle's `CFBundleShortVersionString`. Su
 
 ```swift
 let analytics = TotonoAnalytics(
-    endpoint: URL(string: "https://totono.work/api/public/analytics/v1/events")!,
     key: "YOUR_INGESTION_KEY",
     context: AnalyticsContext(language: "cs-CZ", colorScheme: .dark)
 )

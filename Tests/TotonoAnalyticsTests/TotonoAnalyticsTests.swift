@@ -13,7 +13,7 @@ final class TotonoAnalyticsTests: XCTestCase {
     func testWireContractAndFutureOnlyIdentity() async throws {
         let recorder = Recorder()
         let defaults = UserDefaults(suiteName: "analytics.test.\(UUID())")!
-        let client = TotonoAnalytics(endpoint: URL(string: "https://example.com/events")!, key: "test", environment: .test, defaults: defaults, transport: { await recorder.send($0) })
+        let client = TotonoAnalytics(key: "test", environment: .test, defaults: defaults, transport: { await recorder.send($0) })
         await client.track("before")
         await client.identify("customer")
         await client.track("after", properties: ["amount": .number(2), "empty": .null])
@@ -29,7 +29,7 @@ final class TotonoAnalyticsTests: XCTestCase {
     }
     func testResetAndOptOut() async throws {
         let recorder = Recorder()
-        let client = TotonoAnalytics(endpoint: URL(string: "https://example.com/events")!, key: "test", defaults: UserDefaults(suiteName: "analytics.test.\(UUID())")!, transport: { await recorder.send($0) })
+        let client = TotonoAnalytics(key: "test", defaults: UserDefaults(suiteName: "analytics.test.\(UUID())")!, transport: { await recorder.send($0) })
         let original = await client.getInstallationId()
         await client.track("discard")
         await client.setOptOut(true)
@@ -63,10 +63,9 @@ actor LiveRecorder {
 }
 extension TotonoAnalyticsTests {
     func testLiveIngestionWhenConfigured() async throws {
-        guard let endpoint = ProcessInfo.processInfo.environment["TOTONO_ANALYTICS_TEST_ENDPOINT"],
-              let key = ProcessInfo.processInfo.environment["TOTONO_ANALYTICS_TEST_KEY"] else { throw XCTSkip("Local collection endpoint not configured") }
+        guard let key = ProcessInfo.processInfo.environment["TOTONO_ANALYTICS_TEST_KEY"] else { throw XCTSkip("Collection test key not configured") }
         let recorder = LiveRecorder()
-        let client = TotonoAnalytics(endpoint: URL(string: endpoint)!, key: key, environment: .test,
+        let client = TotonoAnalytics(key: key, environment: .test,
                                      defaults: UserDefaults(suiteName: "analytics.live.\(UUID())")!, transport: { try await recorder.send($0) })
         await client.track("ios.contract", properties: ["source": .string("swift")])
         await client.flush()
@@ -87,7 +86,7 @@ actor RetryRecorder {
 extension TotonoAnalyticsTests {
     func testRetriesPreserveEventIdentityAndBackOff() async throws {
         let recorder = RetryRecorder()
-        let client = TotonoAnalytics(endpoint: URL(string: "https://example.com/events")!, key: "retry", defaults: UserDefaults(suiteName: "analytics.retry.\(UUID())")!, transport: { await recorder.send($0) })
+        let client = TotonoAnalytics(key: "retry", defaults: UserDefaults(suiteName: "analytics.retry.\(UUID())")!, transport: { await recorder.send($0) })
         await client.track("retry")
         await client.flush()
         await client.setContext(AnalyticsContext(language: "cs-CZ", colorScheme: .dark))
@@ -121,7 +120,7 @@ extension TotonoAnalyticsTests {
         let legacy: [String: Any] = ["id": UUID().uuidString, "timestamp": f.string(from: Date()), "name": "legacy",
             "installationId": "i", "sessionId": "s", "environment": "production", "platform": "ios", "appVersion": "1", "properties": [:]]
         defaults.set(try JSONSerialization.data(withJSONObject: [legacy]), forKey: "totono.analytics.upgrade.queue")
-        let client = TotonoAnalytics(endpoint: URL(string: "https://example.com/events")!, key: "upgrade", appVersion: "2.1",
+        let client = TotonoAnalytics(key: "upgrade", appVersion: "2.1",
                                      context: AnalyticsContext(language: "cs-CZ", colorScheme: .dark),
                                      defaults: defaults, transport: { await recorder.send($0) })
         await client.track("first")
